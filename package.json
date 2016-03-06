@@ -1,0 +1,25 @@
+{
+  "name": "hubpress-plugin-pouchdb",
+  "version": "0.1.0",
+  "description": "PouchDB for HubPress",
+  "main": "lib/pouchDbPlugin.js",
+  "scripts": {
+    "compile": "babel --presets es2015 -d lib/ src/ && find ./lib -name '*.js' -exec ./node_modules/uglify-js/bin/uglifyjs --compress --mangle --output {} -- {} \\;",
+    "prepublish": "npm run compile",
+    "test": "npm run compile && mocha --compilers js:babel-core/register"
+  },
+  "author": "Anthonny Quérouil <anthonny.querouil@gmail.com> (http://anthonnyquerouil.fr)",
+  "license": "MIT",
+  "files": [
+    "lib"
+  ],
+  "dependencies": {
+    "node-uuid": "^1.4.7",
+    "pouchdb": "^5.2.1",
+    "pouchdb-find": "^0.9.0",
+    "q": "^1.4.1"
+  },
+  "devDependencies": {
+    "uglify-js": "^2.6.2"
+  }
+}
