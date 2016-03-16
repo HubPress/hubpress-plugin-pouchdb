@@ -1,4 +1,5 @@
 import Q from 'q';
+import _ from 'lodash';
 import uuid from 'node-uuid';
 import PouchDB from 'pouchdb';
 import PouchDBFind from 'pouchdb-find'
@@ -24,7 +25,6 @@ export function pouchDbPlugin (hubpress) {
           limit: 1
         })
         .then( (values) => {
-          const existingPost = values.docs[0]
           if (!values.docs.length) {
             post._id = uuid.v4();
             post.type = TYPE_POST;
@@ -72,11 +72,30 @@ export function pouchDbPlugin (hubpress) {
     const reducePromise = (postPromises || [])
       .reduce((memo, promise) => memo.then(promise), Q([]));
 
-    return reducePromise.then( (posts) => {
-      const mergeDocuments = Object.assign({}, {posts}, opts.data.documents);
-      const data = Object.assign({}, opts.data, {documents: mergeDocuments});
-      return Object.assign({}, opts, {data});
+    const remotePostNames = posts.map(post => post.name);
+
+    // Refresh posts which are not on the Remote repository
+    const  refreshLocalPosts = db.find({
+      selector: {type: {$eq: TYPE_POST}, 'original.name': {$nin: remotePostNames}}
     })
+    .then(values => {
+      if (!values.docs.length) {
+        return [];
+      }
+      else {
+        const posts = values.docs.map(doc => _.pick(doc, ['_id', '_rev', 'attributes', 'content', 'excerpt', 'html', 'name', 'path', 'title', 'type', 'url']));
+        console.error('POUCHDB posts', posts);
+        return db.bulkDocs(posts)
+      }
+    });
+
+    return refreshLocalPosts
+      .then(reducePromise)
+      .then( (posts) => {
+        const mergeDocuments = Object.assign({}, {posts}, opts.data.documents);
+        const data = Object.assign({}, opts.data, {documents: mergeDocuments});
+        return Object.assign({}, opts, {data});
+      })
 
   })
 
@@ -90,6 +109,9 @@ export function pouchDbPlugin (hubpress) {
     return db.createIndex({
       index: {fields: ['name', 'type']}
     }).
+    then(() => db.createIndex({
+      index: {fields: ['type']}
+    })).
     then(() => db.createIndex({
       index: {fields: ['original.name', 'type']}
     })).
