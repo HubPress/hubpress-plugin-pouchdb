@@ -2,7 +2,7 @@ import Q from 'q';
 import _ from 'lodash';
 import uuid from 'node-uuid';
 import PouchDB from 'pouchdb';
-import PouchDBFind from 'pouchdb-find'
+import PouchDBFind from 'pouchdb-find';
 PouchDB.plugin(PouchDBFind);
 
 window.PouchDB = PouchDB;
@@ -13,6 +13,8 @@ let db;// = new PouchDB('hubpress');
 export function pouchDbPlugin (hubpress) {
 
   hubpress.on('requestLocalSynchronization', (opts) => {
+    console.info('PouchDb Plugin - requestLocalSynchronization');
+    console.log('requestLocalSynchronization', opts);
     const posts = opts.data.documents.posts || [];
 
     const postPromises = posts.map((post) => {
@@ -21,11 +23,13 @@ export function pouchDbPlugin (hubpress) {
         const defer = Q.defer();
         delete post._links;
         db.find({
-          selector: {'original.name': {$eq: post.name}, type: {$eq: TYPE_POST}},
+          selector: {type: {$eq: TYPE_POST}, 'original.name': {$eq: post.name}},
           limit: 1
         })
         .then( (values) => {
+          console.log('POST find values', values);
           if (!values.docs.length) {
+            console.log('POST not found', post.name);
             post._id = uuid.v4();
             post.type = TYPE_POST;
             // Doc not found
@@ -40,15 +44,17 @@ export function pouchDbPlugin (hubpress) {
             });
           }
           else {
+            console.log('POST found', post.name);
             const existingPost = values.docs[0];
             if (existingPost.original && existingPost.original.content !== post.content || existingPost.published !== post.published) {
+              console.log('POST changed', post.name);
               post._id = existingPost._id;
               post._rev = existingPost._rev;
               post.type = TYPE_POST;
               db.put(post)
                 .then( () => {
                   post._rev = existingPost._rev;
-                  completePosts.push(post)
+                  completePosts.push(post);
                   defer.resolve(completePosts);
                 })
                 .catch( (e) => {
@@ -56,54 +62,57 @@ export function pouchDbPlugin (hubpress) {
                 });
             }
             else {
+              console.log('POST changed', post.name);
               post._id = existingPost._id;
               post._rev = existingPost._rev;
               post.type = TYPE_POST;
-              completePosts.push(post)
+              completePosts.push(post);
               defer.resolve(completePosts);
             }
           }
-        })
+        });
 
         return defer.promise;
-      }
+      };
     });
 
     const reducePromise = (postPromises || [])
       .reduce((memo, promise) => memo.then(promise), Q([]));
 
     const remotePostNames = posts.map(post => post.name);
-
+    console.log('POST remotePostNames', remotePostNames);
     // Refresh posts which are not on the Remote repository
     const  refreshLocalPosts = db.find({
       selector: {type: {$eq: TYPE_POST}, 'original.name': {$nin: remotePostNames}}
     })
     .then(values => {
       if (!values.docs.length) {
+        console.error('POUCHDB refreshLocalPosts no post found');
         return [];
       }
       else {
         const posts = values.docs.map(doc => _.pick(doc, ['_id', '_rev', 'attributes', 'content', 'excerpt', 'html', 'name', 'path', 'title', 'type', 'url']));
         console.error('POUCHDB posts', posts);
-        return db.bulkDocs(posts)
+        return db.bulkDocs(posts);
       }
     });
 
     return refreshLocalPosts
-      .then(reducePromise)
+      .then(() => reducePromise)
       .then( (posts) => {
         const mergeDocuments = Object.assign({}, {posts}, opts.data.documents);
         const data = Object.assign({}, opts.data, {documents: mergeDocuments});
         return Object.assign({}, opts, {data});
-      })
-
-  })
+      });
+  });
 
   hubpress.on('receiveConfig', (opts) => {
+    console.info('PouchDb Plugin - receiveConfig');
+    console.log('receiveConfig', opts);
     db = new PouchDB('hubpress-' + opts.data.config.meta.username+'-'+opts.data.config.meta.repositoryName);
 
     db.info().then((data) => {
-      console.log('PouchDB infos', data)
+      console.log('PouchDB infos', data);
     });
 
     return db.createIndex({
@@ -122,9 +131,11 @@ export function pouchDbPlugin (hubpress) {
       index: {fields: ['original.name', 'published', 'type']}
     })).
     then(() => opts);
-  })
+  });
 
   hubpress.on('requestLocalPosts', (opts) => {
+    console.info('PouchDb Plugin - requestLocalPosts');
+    console.log('requestLocalPosts', opts);
 
     return db.find({
       selector: {name: {$gt: null}, type: {$eq: TYPE_POST}},
@@ -135,21 +146,23 @@ export function pouchDbPlugin (hubpress) {
       return Object.assign({}, opts, {data});
     });
 
-  })
+  });
 
   hubpress.on('requestSelectedPost', (opts) => {
-    console.log(opts);
+    console.info('PouchDb Plugin - requestSelectedPost');
+    console.log('requestSelectedPost', opts);
     return db.get(opts.data.post._id)
     .then( (selectedPost) => {
       const data = Object.assign({}, opts.data, {selectedPost});
       return Object.assign({}, opts, {data});
     });
 
-  })
+  });
 
   hubpress.on('requestLocalPost', (opts) => {
+    console.info('PouchDb Plugin - requestLocalPost');
+    console.log('requestLocalPost', opts);
     const defer = Q.defer();
-    console.log(opts);
     db.get(opts.data.post._id)
     .then( (post) => {
       const data = Object.assign({}, opts.data, {post});
@@ -170,10 +183,11 @@ export function pouchDbPlugin (hubpress) {
     });
     return defer.promise;
 
-  })
+  });
 
   hubpress.on('requestSaveLocalPost', (opts) => {
-    console.log('requestSaveLocalPost',opts);
+    console.info('PouchDb Plugin - requestSaveLocalPost');
+    console.log('requestSaveLocalPost', opts);
     const defer = Q.defer();
 
     db.find({
@@ -218,11 +232,12 @@ export function pouchDbPlugin (hubpress) {
       }
     });
 
-    return defer.promise
-  })
+    return defer.promise;
+  });
 
   hubpress.on('requestLocalPublishedPosts', opts => {
-    console.log('requestLocalPublishedPosts ++ ', opts);
+    console.info('PouchDb Plugin - requestLocalPublishedPosts');
+    console.log('requestLocalPublishedPosts', opts);
     return db.find({
       selector: {'original.name': {$gt: null}, published: {$eq: 1 }, type: {$eq: TYPE_POST}},
       sort: [{'original.name':'desc'}]
@@ -231,14 +246,16 @@ export function pouchDbPlugin (hubpress) {
       console.log('requestLocalPublishedPosts => ', result);
       const data = Object.assign({}, opts.data, {publishedPosts: result.docs});
       return Object.assign({}, opts, {data});
-    })
-  })
+    });
+  });
 
   hubpress.on('requestDeleteLocalPost', opts => {
-    console.log('requestDeleteLocalPost ++ ', opts);
+    console.info('PouchDb Plugin - requestDeleteLocalPost');
+    console.log('requestDeleteLocalPost', opts);
+
     return db.remove(opts.data.post._id, opts.data.post._rev)
-    .then(result => {
+    .then(() => {
       return opts;
-    })
-  })
+    });
+  });
 }
